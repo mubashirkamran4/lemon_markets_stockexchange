@@ -22,9 +22,9 @@ class CreateOrderModel(BaseModel):
 
     @root_validator
     def validate_order(cls, values):
-        if values.get("type_") == "market" and values.get("limit_price"):
+        if values.get("type_") == OrderType.MARKET and values.get("limit_price"):
             raise ValueError("Market orders cannot have limit_price")
-        if values.get("type_") == "limit" and not values.get("limit_price"):
+        if values.get("type_") == OrderType.LIMIT and not values.get("limit_price"):
             raise ValueError("Limit orders require limit_price")
         return values
 
@@ -39,22 +39,16 @@ async def process_order_placement(order: PydanticOrder, db: Session = Depends(ge
 
     try:
         place_order(order)
-        
         db_order.status = "completed"
-        logger.info(f"Order {order.id_} completed", 
-                   extra={"instrument": order.instrument})
         
     except OrderPlacementError as e:
         db_order.status = "failed"
         db_order.error_message = str(e)
-        logger.warning(f"Order {order.id_} failed: {str(e)}", 
-                      extra={"instrument": order.instrument})
         
     except Exception as e:
         db_order.status = "error"
-        db_order.error_message = "Internal processing error"
-        logger.critical(f"Order {order.id_} errored: {str(e)}", 
-                       exc_info=True)
+        db_order.error_message = f"Internal server error while placing the order \n {str(e)}"
+
     finally:
         try:
             db.commit()
